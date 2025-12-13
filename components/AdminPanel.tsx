@@ -35,7 +35,7 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
   const [manualTokenData, setManualTokenData] = useState({ 
       reference: '', 
-      amount: '2000',
+      amount: '3000',
       fullName: '',
       phoneNumber: '',
       examType: 'BOTH' as 'JAMB' | 'WAEC' | 'KIDS' | 'BOTH'
@@ -104,6 +104,19 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
         ));
     }
   }, [searchTerm, allQuestions, activeTab]);
+
+  // Update default amount when exam type changes
+  const handleExamTypeChange = (type: 'JAMB' | 'WAEC' | 'KIDS' | 'BOTH') => {
+      let amount = '3000';
+      if (type === 'JAMB') amount = '1500';
+      if (type === 'WAEC') amount = '1500';
+      
+      setManualTokenData(prev => ({
+          ...prev,
+          examType: type,
+          amount: amount
+      }));
+  };
 
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -548,12 +561,11 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
                                     <select 
                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white font-bold text-sm"
                                         value={manualTokenData.examType}
-                                        onChange={e => setManualTokenData({...manualTokenData, examType: e.target.value as any})}
+                                        onChange={e => handleExamTypeChange(e.target.value as any)}
                                     >
                                         <option value="BOTH">FULL ACCESS (JAMB + WAEC + KIDS)</option>
                                         <option value="JAMB">JAMB Only</option>
                                         <option value="WAEC">WAEC Only</option>
-                                        <option value="KIDS">Kids Math Only</option>
                                     </select>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">

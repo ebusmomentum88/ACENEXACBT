@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from './Button';
 import { User, loginUser, loginWithToken, verifyPaystackPayment } from '../services/auth';
-import { BookOpen, AlertCircle, Lock, User as UserIcon, HelpCircle, ArrowLeft, GraduationCap, CheckCircle, Moon, Sun, Key, Smartphone, ShieldCheck, CreditCard, ChevronRight, Calendar, Hash, Banknote, Shield, MessageCircle, Copy, Building2, WifiOff } from 'lucide-react';
+import { BookOpen, AlertCircle, Lock, User as UserIcon, HelpCircle, ArrowLeft, GraduationCap, CheckCircle, Moon, Sun, Key, Smartphone, ShieldCheck, CreditCard, ChevronRight, Calendar, Hash, Banknote, Shield, MessageCircle, Copy, Building2, WifiOff, Check } from 'lucide-react';
 import { ExamType } from '../types';
 import { PAYSTACK_PUBLIC_KEY } from '../services/config';
 
@@ -12,6 +12,21 @@ interface Props {
   toggleTheme: () => void;
   isOnline: boolean;
 }
+
+type PackageType = 'JAMB' | 'WAEC' | 'BOTH';
+
+interface PackageOption {
+    id: PackageType;
+    title: string;
+    price: number;
+    desc: string;
+}
+
+const PACKAGES: PackageOption[] = [
+    { id: 'JAMB', title: 'JAMB Only', price: 1500, desc: 'Access to JAMB UTME Past Questions' },
+    { id: 'WAEC', title: 'WAEC Only', price: 1500, desc: 'Access to WAEC SSCE Past Questions' },
+    { id: 'BOTH', title: 'Full Access', price: 3000, desc: 'JAMB + WAEC + Kids Math' },
+];
 
 export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOnline }) => {
   const [mode, setMode] = useState<'token' | 'admin'>('token');
@@ -27,6 +42,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
       phoneNumber: '',
       email: ''
   });
+  const [selectedPackage, setSelectedPackage] = useState<PackageType>('BOTH');
   const [paymentStep, setPaymentStep] = useState<'details' | 'gateway' | 'bank_transfer'>('details');
   
   const [purchasedToken, setPurchasedToken] = useState('');
@@ -113,6 +129,10 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
       setPaymentStep('gateway');
   };
 
+  const getCurrentPrice = () => {
+      return PACKAGES.find(p => p.id === selectedPackage)?.price || 3000;
+  };
+
   const launchPaystack = () => {
       if (PAYSTACK_PUBLIC_KEY.includes('xxxx') || !PAYSTACK_PUBLIC_KEY.startsWith('pk_')) {
           alert("SETUP INCOMPLETE: Check config.");
@@ -124,16 +144,19 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
           return;
       }
 
+      const amountKobo = getCurrentPrice() * 100;
+
       const handler = (window as any).PaystackPop.setup({
           key: PAYSTACK_PUBLIC_KEY,
           email: purchaseData.email,
-          amount: 200000, 
+          amount: amountKobo, 
           currency: 'NGN',
           ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1), 
           metadata: {
               custom_fields: [
                   { display_name: "Full Name", variable_name: "full_name", value: purchaseData.fullName },
-                  { display_name: "Phone Number", variable_name: "phone_number", value: purchaseData.phoneNumber }
+                  { display_name: "Phone Number", variable_name: "phone_number", value: purchaseData.phoneNumber },
+                  { display_name: "Exam Type", variable_name: "exam_type", value: selectedPackage }
               ]
           },
           callback: function(response: any) {
@@ -154,7 +177,9 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
               reference,
               purchaseData.email,
               purchaseData.fullName,
-              purchaseData.phoneNumber
+              purchaseData.phoneNumber,
+              selectedPackage,
+              getCurrentPrice()
           );
           setPurchasedToken(res.token);
           setView('token_display');
@@ -348,16 +373,26 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                             {paymentStep === 'details' ? (
                                 <>
                                     <form onSubmit={handleProceedToPayment} className="space-y-4">
-                                        <div className="bg-green-50 dark:bg-green-900/30 p-4 rounded border-2 border-green-200 dark:border-green-800 text-center">
-                                            <div className="flex items-center justify-center gap-2 mb-2 text-green-800 dark:text-green-300 font-bold uppercase text-sm">
-                                                <GraduationCap size={18} />
-                                                Full CBT Access
-                                            </div>
-                                            <div className="text-xs text-green-700 dark:text-green-400 mb-3">
-                                                Includes JAMB, WAEC & <strong>Kids Math</strong>
-                                            </div>
-                                            <div className="text-2xl font-black text-green-900 dark:text-green-200">
-                                                ₦2,000
+                                        
+                                        <div className="mb-4">
+                                            <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Select Package</h3>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {PACKAGES.map(pkg => (
+                                                    <div 
+                                                        key={pkg.id}
+                                                        onClick={() => setSelectedPackage(pkg.id)}
+                                                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all flex justify-between items-center ${selectedPackage === pkg.id ? 'border-green-600 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-green-300'}`}
+                                                    >
+                                                        <div>
+                                                            <p className={`font-bold text-sm ${selectedPackage === pkg.id ? 'text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-200'}`}>{pkg.title}</p>
+                                                            <p className="text-[10px] text-gray-500 dark:text-gray-400">{pkg.desc}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="font-black text-sm text-gray-800 dark:text-white">₦{pkg.price.toLocaleString()}</p>
+                                                            {selectedPackage === pkg.id && <CheckCircle size={14} className="ml-auto text-green-600"/>}
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
 
@@ -397,7 +432,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                                             />
                                         </div>
                                         <Button className="w-full bg-green-700 text-white py-3 flex items-center justify-center gap-2">
-                                            Next <ChevronRight size={16}/>
+                                            Proceed to Pay ₦{getCurrentPrice().toLocaleString()} <ChevronRight size={16}/>
                                         </Button>
                                     </form>
                                 </>
@@ -412,16 +447,18 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                                                 Edit
                                             </button>
                                             <div className="flex justify-between text-sm mb-2">
+                                                <span className="text-gray-500">Package:</span>
+                                                <span className="font-bold text-green-700 dark:text-green-400 truncate max-w-[150px]">
+                                                    {PACKAGES.find(p => p.id === selectedPackage)?.title}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-sm mb-2">
                                                 <span className="text-gray-500">Name:</span>
                                                 <span className="font-bold text-gray-800 dark:text-white truncate max-w-[150px]">{purchaseData.fullName}</span>
                                             </div>
-                                            <div className="flex justify-between text-sm mb-2">
-                                                <span className="text-gray-500">Email:</span>
-                                                <span className="font-bold text-gray-800 dark:text-white truncate max-w-[150px]">{purchaseData.email}</span>
-                                            </div>
                                             <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">
                                                 <span className="text-gray-500 font-bold">Total:</span>
-                                                <span className="font-black text-green-700 dark:text-green-400 text-lg">₦2,000.00</span>
+                                                <span className="font-black text-green-700 dark:text-green-400 text-lg">₦{getCurrentPrice().toLocaleString()}.00</span>
                                             </div>
                                         </div>
 
@@ -501,6 +538,11 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                                                 <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
                                                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Account Name</p>
                                                     <p className="text-base font-bold text-gray-800 dark:text-white">Agua Ebubechukwu Samuel</p>
+                                                </div>
+
+                                                <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
+                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Amount to Transfer</p>
+                                                    <p className="text-xl font-black text-green-600 dark:text-green-400">₦{getCurrentPrice().toLocaleString()}.00</p>
                                                 </div>
                                             </div>
 

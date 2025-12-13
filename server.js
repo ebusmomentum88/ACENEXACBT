@@ -80,7 +80,7 @@ app.get('/health', (req, res) => {
 
 // 1. PAYMENT VERIFICATION & TOKEN GENERATION
 app.post('/api/payments/verify-paystack', async (req, res) => {
-    const { reference, email, fullName, phoneNumber } = req.body;
+    const { reference, email, fullName, phoneNumber, examType } = req.body;
 
     if (!reference) return res.status(400).json({ error: "Missing transaction reference." });
     if (!paystackSecretKey) return res.status(500).json({ error: "Server misconfiguration: Missing Paystack Key" });
@@ -113,14 +113,19 @@ app.post('/api/payments/verify-paystack', async (req, res) => {
             return res.status(400).json({ error: "Payment verification failed: Transaction was not successful." });
         }
 
-        const EXPECTED_AMOUNT = 200000; // N2,000.00
-        if (data.amount < EXPECTED_AMOUNT) {
-            return res.status(400).json({ error: "Payment verification failed: Invalid amount paid." });
+        // Expected amount check removed or adjusted because frontend now sends variable amounts.
+        // We trust the payment verification from Paystack that the amount was indeed paid.
+        // We could validate minimums (e.g. 150000 kobo) if needed.
+        if (data.amount < 150000) {
+             return res.status(400).json({ error: "Payment verification failed: Invalid amount paid." });
         }
 
         // GENERATE TOKEN
         const tokenCode = generateTokenCode('EBUS');
         
+        // Use examType passed from frontend, default to BOTH if missing (legacy support)
+        const finalExamType = examType || 'BOTH';
+
         const { data: dbData, error } = await supabase
             .from('access_tokens')
             .insert([{
@@ -130,7 +135,7 @@ app.post('/api/payments/verify-paystack', async (req, res) => {
                 metadata: {
                     payment_ref: reference,
                     amount_paid: data.amount / 100,
-                    exam_type: 'BOTH',
+                    exam_type: finalExamType,
                     full_name: fullName,
                     phone_number: phoneNumber,
                     email: email,

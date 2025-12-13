@@ -245,7 +245,7 @@ export const loginWithToken = async (token: string, confirmBinding: boolean = fa
     }
 };
 
-export const verifyPaystackPayment = async (reference: string, email: string, fullName: string, phoneNumber: string) => {
+export const verifyPaystackPayment = async (reference: string, email: string, fullName: string, phoneNumber: string, examType: 'JAMB' | 'WAEC' | 'BOTH', amount: number) => {
     if (FORCE_OFFLINE) {
         // Simulate in offline mode (Development only)
         const token = generateSecureToken('OFFLINE');
@@ -257,8 +257,8 @@ export const verifyPaystackPayment = async (reference: string, email: string, fu
             device_fingerprint: null,
             metadata: { 
                 payment_ref: reference, 
-                amount_paid: 2000, 
-                exam_type: 'BOTH',
+                amount_paid: amount, 
+                exam_type: examType,
                 email,
                 full_name: fullName,
                 phone_number: phoneNumber
@@ -273,7 +273,8 @@ export const verifyPaystackPayment = async (reference: string, email: string, fu
             reference, 
             email, 
             fullName, 
-            phoneNumber 
+            phoneNumber,
+            examType // Pass the selected package type
         });
         return response; // Contains { success: true, token: "..." }
     } catch (err: any) {
