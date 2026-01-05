@@ -222,27 +222,81 @@ app.get('/api/admin/tokens', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// AUTH
+// AUTH WITH 1-YEAR EXPIRY CHECK
 app.post('/api/auth/login-with-token', async (req, res) => {
   const { token, deviceFingerprint, confirm_binding } = req.body;
   try {
     const { data: tokenData, error } = await supabase.from('access_tokens').select('*').eq('token_code', token).single();
     if (error || !tokenData) return res.status(401).json({ error: 'Invalid Access Token.' });
-    if (!tokenData.is_active) return res.status(403).json({ error: 'This token has been deactivated.' });
+    if (!tokenData.is_active) return res.status(403).json({ error: 'This token has been deactivated by admin.' });
+
+    // CHECK TOKEN EXPIRY (1 Year Validity from binding date)
+    if (tokenData.expires_at) {
+        const expiryDate = new Date(tokenData.expires_at);
+        const now = new Date();
+        if (now > expiryDate) {
+            return res.status(403).json({
+                error: `Access Code Expired! This code expired on ${expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}. Please purchase a new access code to continue.`
+            });
+        }
+    }
 
     const allowedExamType = tokenData.metadata?.exam_type || 'BOTH';
     const fullName = tokenData.metadata?.full_name || 'Student';
 
     if (!tokenData.device_fingerprint) {
         if (!confirm_binding) return res.json({ requires_binding: true });
+
+        // Binding will trigger database trigger to automatically set bound_at and expires_at (1 year from now)
         const { error: updateError } = await supabase.from('access_tokens').update({ device_fingerprint: deviceFingerprint }).eq('id', tokenData.id);
         if (updateError) throw updateError;
+
+        // Fetch updated token data with expiry date
+        const { data: updatedToken } = await supabase.from('access_tokens').select('*').eq('id', tokenData.id).single();
+        const expiryDate = updatedToken?.expires_at ? new Date(updatedToken.expires_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown';
+
+        return res.json({
+            username: tokenData.token_code,
+            role: 'student',
+            fullName,
+            regNumber: tokenData.token_code,
+            isTokenLogin: true,
+            allowedExamType,
+            message: `Access code bound successfully! Valid until ${expiryDate}`,
+            expiresAt: updatedToken?.expires_at
+        });
     } else {
-        if (tokenData.device_fingerprint !== deviceFingerprint) return res.status(403).json({ error: '⛔ ACCESS DENIED: Token locked to another device.' });
+        if (tokenData.device_fingerprint !== deviceFingerprint) {
+            return res.status(403).json({ error: '⛔ ACCESS DENIED: This Access Code is locked to another device.' });
+        }
     }
 
-    return res.json({ username: tokenData.token_code, role: 'student', fullName, regNumber: tokenData.token_code, isTokenLogin: true, allowedExamType });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // Calculate remaining validity days
+    let remainingDays = null;
+    let expiryDateFormatted = 'Lifetime';
+    if (tokenData.expires_at) {
+        const expiryDate = new Date(tokenData.expires_at);
+        const now = new Date();
+        const diffTime = expiryDate - now;
+        remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        expiryDateFormatted = expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    return res.json({
+        username: tokenData.token_code,
+        role: 'student',
+        fullName,
+        regNumber: tokenData.token_code,
+        isTokenLogin: true,
+        allowedExamType,
+        remainingDays,
+        expiresAt: tokenData.expires_at,
+        expiryMessage: remainingDays ? `${remainingDays} days remaining (Valid until ${expiryDateFormatted})` : 'Active'
+    });
+  } catch (err) {
+    console.error('Token login error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/auth/login', async (req, res) => {

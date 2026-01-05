@@ -17,6 +17,8 @@ export interface TokenInfo {
     is_active: boolean;
     created_at: string;
     device_fingerprint?: string | null; // Stores the unique device hash
+    bound_at?: string | null; // When the token was bound to a device
+    expires_at?: string | null; // Expiry date (1 year from bound_at)
     metadata: {
         payment_ref?: string;
         amount_paid?: number;

@@ -763,6 +763,24 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
                                                     </div>
                                                     <div className="flex flex-col gap-1">
                                                         <span className="flex items-center gap-1"><Phone size={10}/> {t.metadata?.phone_number || 'N/A'}</span>
+                                                        {t.expires_at && (
+                                                            <span className={`text-[10px] font-bold ${
+                                                                new Date(t.expires_at) > new Date()
+                                                                    ? 'text-green-600 dark:text-green-400'
+                                                                    : 'text-red-600 dark:text-red-400'
+                                                            }`}>
+                                                                {new Date(t.expires_at) > new Date()
+                                                                    ? `Valid until: ${new Date(t.expires_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                                                                    : `Expired: ${new Date(t.expires_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                                                                }
+                                                            </span>
+                                                        )}
+                                                        {!t.expires_at && t.device_fingerprint && (
+                                                            <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-bold">Legacy (No Expiry Set)</span>
+                                                        )}
+                                                        {!t.device_fingerprint && (
+                                                            <span className="text-[10px] text-gray-400 italic">Not yet bound</span>
+                                                        )}
                                                         <span className="text-[10px] text-gray-400">Ref: {t.metadata?.payment_ref || 'N/A'}</span>
                                                     </div>
                                                 </td>
