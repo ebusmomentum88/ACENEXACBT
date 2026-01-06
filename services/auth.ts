@@ -1,6 +1,6 @@
-
 import { getApiUrl, FORCE_OFFLINE } from './config';
 import { getDeviceFingerprint } from './device';
+import { sha256 } from './utils'; // simple hash function for offline passwords
 
 export interface User {
   username: string;
@@ -12,23 +12,23 @@ export interface User {
 }
 
 export interface TokenInfo {
-    id: string;
-    token_code: string;
-    is_active: boolean;
-    created_at: string;
-    device_fingerprint?: string | null; // Stores the unique device hash
-    bound_at?: string | null; // When the token was bound to a device
-    expires_at?: string | null; // Expiry date (1 year from bound_at)
-    metadata: {
-        payment_ref?: string;
-        amount_paid?: number;
-        exam_type?: string;
-        full_name?: string;
-        phone_number?: string;
-        email?: string;
-        generated_by?: string;
-        [key: string]: any;
-    };
+  id: string;
+  token_code: string;
+  is_active: boolean;
+  created_at: string;
+  device_fingerprint?: string | null;
+  bound_at?: string | null;
+  expires_at?: string | null;
+  metadata: {
+    payment_ref?: string;
+    amount_paid?: number;
+    exam_type?: string;
+    full_name?: string;
+    phone_number?: string;
+    email?: string;
+    generated_by?: string;
+    [key: string]: any;
+  };
 }
 
 const CURRENT_USER_KEY = 'jamb_cbt_current_user';
@@ -36,485 +36,301 @@ const LOCAL_USERS_KEY = 'jamb_cbt_local_users';
 const LOCAL_TOKENS_KEY = 'jamb_cbt_local_tokens';
 const LOCAL_ADMIN_KEY = 'jamb_cbt_local_admin';
 
-// Helper for timeouts
+// ------------------ HELPERS ------------------
+
 const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 5000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        clearTimeout(id);
-        return response;
-    } catch (error) {
-        clearTimeout(id);
-        throw error;
-    }
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
 };
 
-// Generic timeout wrapper for any promise
 const withTimeout = <T>(promise: Promise<T>, ms: number, fallbackError: string = "Timeout"): Promise<T> => {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(fallbackError)), ms);
-        promise
-            .then(res => { clearTimeout(timer); resolve(res); })
-            .catch(err => { clearTimeout(timer); reject(err); });
-    });
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(fallbackError)), ms);
+    promise
+      .then(res => { clearTimeout(timer); resolve(res); })
+      .catch(err => { clearTimeout(timer); reject(err); });
+  });
 };
 
 const apiRequest = async (endpoint: string, method: string, body?: any) => {
-    // Fast fail if we are definitely offline
-    if (!navigator.onLine && !FORCE_OFFLINE) {
-        throw new Error("Network offline");
+  if (!navigator.onLine && !FORCE_OFFLINE) throw new Error("Network offline");
+  if (FORCE_OFFLINE) throw new Error("Offline Mode Enforced");
+
+  const url = getApiUrl(endpoint);
+  try {
+    const res = await fetchWithTimeout(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    }, 5000);
+
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error(`Non-JSON response (Status ${res.status})`);
     }
 
-    if (FORCE_OFFLINE) throw new Error("Offline Mode Enforced");
-
-    const url = getApiUrl(endpoint);
-    try {
-        // Reduced timeout to 5s to fail faster to offline mode
-        const res = await fetchWithTimeout(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: body ? JSON.stringify(body) : undefined
-        }, 5000); 
-        
-        const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-            throw new Error(`Non-JSON response (Status ${res.status})`);
-        }
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'API Request Failed');
-        return data;
-    } catch (err: any) {
-        throw err;
-    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'API Request Failed');
+    return data;
+  } catch (err: any) {
+    throw err;
+  }
 };
 
-// --- LOCAL STORAGE HELPERS (FOR OFFLINE MODE) ---
+// ------------------ LOCAL STORAGE HELPERS ------------------
+
 const getLocalTokens = (): TokenInfo[] => {
-    try { return JSON.parse(localStorage.getItem(LOCAL_TOKENS_KEY) || '[]'); } catch(e) { return []; }
+  try { return JSON.parse(localStorage.getItem(LOCAL_TOKENS_KEY) || '[]'); } catch(e) { return []; }
 };
 const saveLocalToken = (token: TokenInfo) => {
-    const tokens = getLocalTokens();
-    // Remove duplicates if any
-    const filtered = tokens.filter(t => t.token_code !== token.token_code);
-    filtered.unshift(token);
-    localStorage.setItem(LOCAL_TOKENS_KEY, JSON.stringify(filtered));
+  let tokens = getLocalTokens();
+  tokens = tokens.filter(t => t.token_code !== token.token_code);
+  tokens.unshift(token);
+  localStorage.setItem(LOCAL_TOKENS_KEY, JSON.stringify(tokens.slice(0, 200)));
 };
 const updateLocalToken = (tokenCode: string, updates: Partial<TokenInfo>) => {
-    let tokens = getLocalTokens();
-    tokens = tokens.map(t => t.token_code === tokenCode ? { ...t, ...updates } : t);
-    localStorage.setItem(LOCAL_TOKENS_KEY, JSON.stringify(tokens));
+  let tokens = getLocalTokens();
+  tokens = tokens.map(t => t.token_code === tokenCode ? { ...t, ...updates } : t);
+  localStorage.setItem(LOCAL_TOKENS_KEY, JSON.stringify(tokens));
 };
 const deleteLocalToken = (tokenCode: string) => {
-    let tokens = getLocalTokens();
-    tokens = tokens.filter(t => t.token_code !== tokenCode);
-    localStorage.setItem(LOCAL_TOKENS_KEY, JSON.stringify(tokens));
+  const tokens = getLocalTokens().filter(t => t.token_code !== tokenCode);
+  localStorage.setItem(LOCAL_TOKENS_KEY, JSON.stringify(tokens));
 };
 const getLocalStudents = (): User[] => {
-    try { return JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]'); } catch(e) { return []; }
+  try { return JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]'); } catch(e) { return []; }
 };
 const saveLocalStudent = (user: User) => {
-    const users = getLocalStudents();
-    users.push(user);
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+  let users = getLocalStudents();
+  users = users.filter(u => u.username !== user.username);
+  users.unshift(user);
+  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users.slice(0, 200)));
 };
 
-// --- SECURE TOKEN GENERATOR ---
+// ------------------ TOKEN GENERATION ------------------
+
 const generateSecureToken = (prefix: string = 'ACE') => {
-    // Generates a format like: PREFIX-XXXX-XXXX-XXXX
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, 1, O, 0
-    const length = 12; // Increased entropy to 12 chars
-    let result = '';
-    
-    // Use crypto for better randomness if available
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        const values = new Uint32Array(length);
-        crypto.getRandomValues(values);
-        for (let i = 0; i < length; i++) {
-            result += chars.charAt(values[i] % chars.length);
-        }
-    } else {
-        // Fallback for older environments
-        for (let i = 0; i < length; i++) {
-            result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-    }
-    
-    // Split into 3 groups of 4 for readability
-    return `${prefix}-${result.substring(0, 4)}-${result.substring(4, 8)}-${result.substring(8, 12)}`;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const length = 12;
+  let result = '';
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const values = new Uint32Array(length);
+    crypto.getRandomValues(values);
+    for (let i = 0; i < length; i++) result += chars.charAt(values[i] % chars.length);
+  } else {
+    for (let i = 0; i < length; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}-${result.substring(0, 4)}-${result.substring(4, 8)}-${result.substring(8, 12)}`;
 };
 
-// Helper: Verify token against local storage
+// ------------------ TOKEN VERIFICATION ------------------
+
 const verifyLocalToken = async (token: string, currentFingerprint: string, confirmBinding: boolean): Promise<User> => {
-    const localTokens = getLocalTokens();
-    // Case-insensitive search
-    const found = localTokens.find(t => t.token_code.toUpperCase() === token.trim().toUpperCase());
-    
-    if (found) {
-        if (!found.is_active) throw new Error("This token has been deactivated by Admin.");
-        
-        // --- DEVICE LOCK CHECK (OFFLINE) ---
-        if (!found.device_fingerprint) {
-            // Check for confirmation
-            if (!confirmBinding) {
-                throw new Error("BINDING_REQUIRED");
-            }
-            // First time use: LOCK to this device
-            console.log(`Binding token ${token} to device ${currentFingerprint}`);
-            updateLocalToken(found.token_code, { device_fingerprint: currentFingerprint });
-        } else if (found.device_fingerprint !== currentFingerprint) {
-            // Subsequent use: Check lock
-            console.warn(`Device Mismatch! Token Locked to: ${found.device_fingerprint}, Current: ${currentFingerprint}`);
-            throw new Error("⛔ ACCESS DENIED: This Access Code is locked to another device. You cannot use it here.");
-        }
-        // -----------------------------------
+  const now = new Date().getTime();
+  const localTokens = getLocalTokens();
+  const found = localTokens.find(t => t.token_code.toUpperCase() === token.trim().toUpperCase());
 
-        // Use name from metadata if available
-        const displayName = found.metadata?.full_name || 'Candidate (Offline)';
-        
-        return {
-            username: found.token_code,
-            role: 'student',
-            fullName: displayName,
-            regNumber: found.token_code,
-            isTokenLogin: true,
-            allowedExamType: (found.metadata?.exam_type as any) || 'BOTH'
-        };
-    }
-    throw new Error("Offline: Invalid Access Code or not cached on this device.");
+  if (!found) throw new Error("Offline: Invalid Access Code or not cached on this device.");
+  if (!found.is_active) throw new Error("This token has been deactivated by Admin.");
+
+  if (found.expires_at && new Date(found.expires_at).getTime() < now) throw new Error("This token has expired.");
+
+  if (!found.device_fingerprint) {
+    if (!confirmBinding) throw new Error("BINDING_REQUIRED");
+    updateLocalToken(found.token_code, { device_fingerprint: currentFingerprint, bound_at: new Date().toISOString() });
+  } else if (found.device_fingerprint !== currentFingerprint) {
+    throw new Error("⛔ ACCESS DENIED: Token locked to another device.");
+  }
+
+  return {
+    username: found.token_code,
+    role: 'student',
+    fullName: found.metadata?.full_name || 'Candidate (Offline)',
+    regNumber: found.token_code,
+    isTokenLogin: true,
+    allowedExamType: (found.metadata?.exam_type as any) || 'BOTH'
+  };
 };
 
-// --- TOKEN AUTH ---
+// ------------------ LOGIN FUNCTIONS ------------------
+
 export const loginWithToken = async (token: string, confirmBinding: boolean = false): Promise<User> => {
-    // 1. Generate unique device signature 
-    let currentFingerprint = '';
+  let currentFingerprint = '';
+  try {
+    currentFingerprint = await withTimeout(getDeviceFingerprint(), 10000, "Device Identity Timeout");
+  } catch {
+    currentFingerprint = 'UNKNOWN_DEVICE';
+  }
+
+  if (!FORCE_OFFLINE) {
     try {
-        currentFingerprint = await withTimeout(getDeviceFingerprint(), 10000, "Device Identity Timeout");
-    } catch (e) {
-        console.error("Device fingerprinting failed:", e);
-        throw new Error("Could not verify device identity. Please refresh and try again.");
-    }
+      const res = await withTimeout(
+        apiRequest('/api/auth/login-with-token', 'POST', { token, deviceFingerprint: currentFingerprint, confirm_binding: confirmBinding }),
+        5000
+      );
+      if (res.requires_binding) throw new Error("BINDING_REQUIRED");
 
-    // 2. Try Online Login first
-    if (!FORCE_OFFLINE) {
-        try {
-            // Wrap in hard timeout of 5s for the whole operation
-            const res = await withTimeout(
-                apiRequest('/api/auth/login-with-token', 'POST', { 
-                    token, 
-                    deviceFingerprint: currentFingerprint,
-                    confirm_binding: confirmBinding 
-                }), 
-                5000
-            );
-
-            if (res.requires_binding) {
-                throw new Error("BINDING_REQUIRED");
-            }
-
-            const user = res as User;
-            
-            // --- NEW: Persist token locally for offline use ---
-            const localTokenEntry: TokenInfo = {
-                id: `cached-${Date.now()}`,
-                token_code: token,
-                is_active: true, // It worked online, so it's active
-                created_at: new Date().toISOString(),
-                device_fingerprint: currentFingerprint,
-                metadata: {
-                    full_name: user.fullName,
-                    exam_type: user.allowedExamType,
-                    generated_by: 'ONLINE_CACHE'
-                }
-            };
-            saveLocalToken(localTokenEntry);
-            // ------------------------------------------------
-
-            localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-            return user;
-        } catch (err: any) {
-            if (err.message === "BINDING_REQUIRED") throw err; // Re-throw binding requirement
-
-            console.warn("Online login failed, attempting local fallback...", err.message);
-            // If online fails (404, 401, or Network Error), fall through to local check
-        }
-    }
-
-    // 3. Fallback to Local Login
-    try {
-        const user = await verifyLocalToken(token, currentFingerprint, confirmBinding);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-        return user;
-    } catch (localErr: any) {
-        // If both failed, throw valid error
-        throw new Error(localErr.message || "Invalid Token or Device Mismatch");
-    }
-};
-
-export const verifyPaystackPayment = async (reference: string, email: string, fullName: string, phoneNumber: string, examType: 'JAMB' | 'WAEC' | 'BOTH', amount: number) => {
-    if (FORCE_OFFLINE) {
-        // Simulate in offline mode (Development only)
-        const token = generateSecureToken('OFFLINE');
-        saveLocalToken({
-            id: Date.now().toString(),
-            token_code: token,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            device_fingerprint: null,
-            metadata: { 
-                payment_ref: reference, 
-                amount_paid: amount, 
-                exam_type: examType,
-                email,
-                full_name: fullName,
-                phone_number: phoneNumber
-            }
-        });
-        return { success: true, token };
-    }
-
-    try {
-        // REAL VERIFICATION: Send reference to backend
-        const response = await apiRequest('/api/payments/verify-paystack', 'POST', { 
-            reference, 
-            email, 
-            fullName, 
-            phoneNumber,
-            examType // Pass the selected package type
-        });
-        return response; // Contains { success: true, token: "..." }
-    } catch (err: any) {
-        throw err;
-    }
-};
-
-/**
- * Synchronously generates a token and saves to local storage.
- * Used when API is unreachable or times out.
- */
-export const generateLocalTokenImmediate = (reference: string, amount: number, examType: string, fullName: string, phoneNumber: string) => {
-    const prefix = FORCE_OFFLINE ? 'ACE' : 'LOCAL';
-    const token = generateSecureToken(prefix);
-    
-    saveLocalToken({
-        id: Date.now().toString(),
+      const user = res as User;
+      saveLocalToken({
+        id: `cached-${Date.now()}`,
         token_code: token,
         is_active: true,
         created_at: new Date().toISOString(),
-        device_fingerprint: null, // Initially unlocked
-        metadata: { 
-            payment_ref: reference || `MANUAL-${Date.now()}`, 
-            amount_paid: amount, 
-            exam_type: examType,
-            full_name: fullName,
-            phone_number: phoneNumber,
-            generated_by: 'ADMIN'
-        }
-    });
-    return { success: true, token };
-};
-
-export const generateManualToken = async (reference: string, amount: number, examType: string, fullName: string, phoneNumber: string) => {
-    // 1. Attempt Online Generation
-    if (!FORCE_OFFLINE) {
-        try {
-            return await apiRequest('/api/admin/generate-token', 'POST', { reference, amount, examType, fullName, phoneNumber });
-        } catch(err: any) {
-            console.warn("Online generation failed. Falling back to local generation.", err);
-            // Fall through to offline logic
-        }
+        device_fingerprint: currentFingerprint,
+        metadata: { full_name: user.fullName, exam_type: user.allowedExamType, generated_by: 'ONLINE_CACHE' }
+      });
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      return user;
+    } catch {
+      // fallback
     }
+  }
 
-    // 2. Offline / Fallback Generation
-    return generateLocalTokenImmediate(reference, amount, examType, fullName, phoneNumber);
-};
-
-export const toggleTokenStatus = async (tokenCode: string, isActive: boolean) => {
-    // Try online, always update local as well for consistency
-    updateLocalToken(tokenCode, { is_active: isActive });
-
-    if (!FORCE_OFFLINE) {
-        // No try/catch here - let errors bubble up to UI
-        return await apiRequest('/api/admin/token-status', 'POST', { tokenCode, isActive });
-    }
-    return { success: true };
-};
-
-export const resetTokenDevice = async (tokenCode: string) => {
-    // Try online, always update local
-    updateLocalToken(tokenCode, { device_fingerprint: null });
-
-    if (!FORCE_OFFLINE) {
-        // No try/catch here - let errors bubble up to UI
-        return await apiRequest('/api/admin/reset-token-device', 'POST', { tokenCode });
-    }
-    return { success: true };
-};
-
-export const deleteToken = async (tokenCode: string) => {
-    // Always delete locally
-    deleteLocalToken(tokenCode);
-
-    if (!FORCE_OFFLINE) {
-        // No try/catch here - let errors bubble up to UI
-        await apiRequest(`/api/admin/tokens/${tokenCode}`, 'DELETE');
-    }
-    return { success: true };
-};
-
-export const getAllTokens = async (): Promise<TokenInfo[]> => {
-    let onlineTokens: TokenInfo[] = [];
-    
-    if (!FORCE_OFFLINE) {
-        try {
-            onlineTokens = await apiRequest('/api/admin/tokens', 'GET');
-        } catch(e) { 
-            console.warn("Failed to fetch online tokens");
-        }
-    }
-    
-    const localTokens = getLocalTokens();
-    
-    // Merge: Prefer online, but include local-only tokens (those generated while offline)
-    // Simple merge: Concat and dedupe by token_code
-    const combined = [...onlineTokens];
-    
-    localTokens.forEach(local => {
-        if (!combined.find(c => c.token_code === local.token_code)) {
-            combined.push(local);
-        }
-    });
-
-    return combined.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-};
-
-// --- LEGACY/ADMIN AUTH ---
-export const registerStudent = async (fullName: string, regNumber: string) => {
-    if (FORCE_OFFLINE) {
-        saveLocalStudent({
-            username: regNumber,
-            role: 'student',
-            fullName,
-            regNumber
-        });
-        return { success: true };
-    }
-    try {
-        return await apiRequest('/api/auth/register', 'POST', { fullName, regNumber });
-    } catch(e) { console.warn("Register failed"); }
-};
-
-export const getAllStudents = async (): Promise<User[]> => {
-    if (FORCE_OFFLINE) {
-        return getLocalStudents();
-    }
-    try {
-        return await apiRequest('/api/users/students', 'GET');
-    } catch(e) { return []; }
-};
-
-export const deleteStudent = async (username: string) => {
-    if (FORCE_OFFLINE) {
-        const users = getLocalStudents().filter(u => u.username !== username);
-        localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
-        return;
-    }
-    try { await apiRequest(`/api/users/${username}`, 'DELETE'); } catch(e){}
+  const user = await verifyLocalToken(token, currentFingerprint, confirmBinding);
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+  return user;
 };
 
 export const loginUser = async (username: string, password: string, role: 'student' | 'admin'): Promise<User> => {
-    // 1. Admin Login (Offline Check ONLY if FORCE_OFFLINE is true)
-    if (role === 'admin' && FORCE_OFFLINE) {
-         // Default admin credentials for pure offline mode
-         let adminCreds = { username: 'admin', password: 'admin' };
-         try {
-             const stored = localStorage.getItem(LOCAL_ADMIN_KEY);
-             if (stored) adminCreds = JSON.parse(stored);
-         } catch(e) {}
-
-         if (username.toLowerCase() === adminCreds.username.toLowerCase() && password === adminCreds.password) {
-             const adminUser: User = { 
-                 username: adminCreds.username, 
-                 role: 'admin', 
-                 fullName: 'System Administrator',
-                 regNumber: 'ADMIN-001'
-             };
-             localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(adminUser));
-             return adminUser;
-         }
-         throw new Error("Invalid Admin credentials (Offline)");
+  if (FORCE_OFFLINE) {
+    if (role === 'admin') {
+      const stored = localStorage.getItem(LOCAL_ADMIN_KEY);
+      let adminCreds = stored ? JSON.parse(stored) : { username: 'admin', password: sha256('admin') };
+      if (username.toLowerCase() === adminCreds.username.toLowerCase() && sha256(password) === adminCreds.password) {
+        const adminUser: User = { username: adminCreds.username, role: 'admin', fullName: 'System Administrator', regNumber: 'ADMIN-001' };
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(adminUser));
+        return adminUser;
+      }
+      throw new Error("Invalid Admin credentials (Offline)");
     }
-
-    // 2. Local Student Login (Offline)
-    if (role === 'student' && FORCE_OFFLINE) {
-        const users = getLocalStudents();
-        const user = users.find(u => u.username === username);
-        if (user) {
-             localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-             return user;
-        }
-        throw new Error("Student not found in local database.");
-    }
-
-    // 3. Online Login (Database Check)
-    try {
-        const user = await apiRequest('/api/auth/login', 'POST', { username, password, role });
+    if (role === 'student') {
+      const users = getLocalStudents();
+      const user = users.find(u => u.username === username);
+      if (user) {
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
         return user;
-    } catch (err: any) {
-         throw err;
+      }
+      throw new Error("Student not found in local database.");
     }
+  }
+
+  try {
+    const user = await apiRequest('/api/auth/login', 'POST', { username, password, role });
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    return user;
+  } catch (err: any) {
+    throw new Error(err.message || "Login failed");
+  }
 };
 
-export const updateAdminCredentials = async (currentUsername: string, currentPass: string, newUsername: string, newPass: string) => {
-    // 1. Offline Mode Update
-    if (FORCE_OFFLINE) {
-        let adminCreds = { username: 'admin', password: 'admin' };
-        try {
-            const stored = localStorage.getItem(LOCAL_ADMIN_KEY);
-            if (stored) adminCreds = JSON.parse(stored);
-        } catch(e) {}
+// ------------------ TOKEN & PAYMENT FUNCTIONS ------------------
 
-        if (currentUsername.toLowerCase() !== adminCreds.username.toLowerCase() || currentPass !== adminCreds.password) {
-            throw new Error("Current admin credentials are incorrect.");
-        }
+export const verifyPaystackPayment = async (reference: string, email: string, fullName: string, phoneNumber: string, examType: 'JAMB' | 'WAEC' | 'BOTH', amount: number) => {
+  if (FORCE_OFFLINE) {
+    const token = generateSecureToken('OFFLINE');
+    saveLocalToken({
+      id: Date.now().toString(),
+      token_code: token,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      device_fingerprint: null,
+      expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(),
+      metadata: { payment_ref: reference, amount_paid: amount, exam_type: examType, full_name: fullName, phone_number: phoneNumber, email }
+    });
+    return { success: true, token };
+  }
+  return await apiRequest('/api/payments/verify-paystack', 'POST', { reference, email, fullName, phoneNumber, examType });
+};
 
-        const newCreds = { username: newUsername, password: newPass };
-        localStorage.setItem(LOCAL_ADMIN_KEY, JSON.stringify(newCreds));
-        return;
-    }
-
-    // 2. Online Mode Update (Backend Call)
+export const generateManualToken = async (reference: string, amount: number, examType: string, fullName: string, phoneNumber: string) => {
+  if (!FORCE_OFFLINE) {
     try {
-        await apiRequest('/api/auth/update-credentials', 'POST', {
-            currentUsername,
-            currentPassword: currentPass,
-            newUsername,
-            newPassword: newPass,
-            role: 'admin'
-        });
-    } catch (err: any) {
-        throw err;
-    }
+      return await apiRequest('/api/admin/generate-token', 'POST', { reference, amount, examType, fullName, phoneNumber });
+    } catch {}
+  }
+  return generateLocalTokenImmediate(reference, amount, examType, fullName, phoneNumber);
 };
+
+export const toggleTokenStatus = async (tokenCode: string, isActive: boolean) => {
+  updateLocalToken(tokenCode, { is_active: isActive });
+  if (!FORCE_OFFLINE) return await apiRequest('/api/admin/token-status', 'POST', { tokenCode, isActive });
+  return { success: true };
+};
+
+export const resetTokenDevice = async (tokenCode: string) => {
+  updateLocalToken(tokenCode, { device_fingerprint: null });
+  if (!FORCE_OFFLINE) return await apiRequest('/api/admin/reset-token-device', 'POST', { tokenCode });
+  return { success: true };
+};
+
+export const deleteToken = async (tokenCode: string) => {
+  deleteLocalToken(tokenCode);
+  if (!FORCE_OFFLINE) await apiRequest(`/api/admin/tokens/${tokenCode}`, 'DELETE');
+  return { success: true };
+};
+
+export const getAllTokens = async (): Promise<TokenInfo[]> => {
+  let onlineTokens: TokenInfo[] = [];
+  if (!FORCE_OFFLINE) {
+    try { onlineTokens = await apiRequest('/api/admin/tokens', 'GET'); } catch {}
+  }
+  const localTokens = getLocalTokens();
+  const combined = [...onlineTokens];
+  localTokens.forEach(local => {
+    if (!combined.find(c => c.token_code === local.token_code)) combined.push(local);
+  });
+  return combined.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+};
+
+// ------------------ STUDENT FUNCTIONS ------------------
+
+export const registerStudent = async (fullName: string, regNumber: string) => {
+  if (FORCE_OFFLINE) {
+    saveLocalStudent({ username: regNumber, role: 'student', fullName, regNumber });
+    return { success: true };
+  }
+  return await apiRequest('/api/auth/register', 'POST', { fullName, regNumber });
+};
+
+export const getAllStudents = async (): Promise<User[]> => {
+  if (FORCE_OFFLINE) return getLocalStudents();
+  try { return await apiRequest('/api/users/students', 'GET'); } catch { return []; }
+};
+
+export const deleteStudent = async (username: string) => {
+  if (FORCE_OFFLINE) {
+    const users = getLocalStudents().filter(u => u.username !== username);
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+    return;
+  }
+  await apiRequest(`/api/users/${username}`, 'DELETE');
+};
+
+// ------------------ PASSWORD FUNCTIONS ------------------
 
 export const changePassword = async (username: string, oldPass: string, newPass: string, role: 'student' | 'admin') => {
-    if (FORCE_OFFLINE) {
-        console.log("Password change simulated locally");
-        return;
-    }
-    // Implement student password change if needed
+  if (FORCE_OFFLINE) {
+    console.log("Password change simulated locally");
+    return;
+  }
+  await apiRequest('/api/auth/change-password', 'POST', { username, oldPass, newPass, role });
 };
 
 export const resetAdminPassword = (newPass: string) => {
-   alert("Please update the admin password directly in the database (Users table).");
+  alert("Please update the admin password directly in the database (Users table).");
 };
 
-export const logoutUser = () => {
-  localStorage.removeItem(CURRENT_USER_KEY);
-};
+// ------------------ CURRENT USER ------------------
 
+export const logoutUser = () => localStorage.removeItem(CURRENT_USER_KEY);
 export const getCurrentUser = (): User | null => {
   const stored = localStorage.getItem(CURRENT_USER_KEY);
   return stored ? JSON.parse(stored) : null;
