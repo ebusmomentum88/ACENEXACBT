@@ -142,9 +142,31 @@ export const deleteQuestion = async (questionId: string): Promise<boolean> => {
 /**
  * Reset the entire database
  */
-export const resetDatabase = async (): Promise<boolean> => {
+export const resetDatabase = async (confirmWipe?: boolean): Promise<boolean> => {
   try {
     const res = await fetch(`${API_BASE}/admin/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ confirm: confirmWipe }),
+    });
+    return res.ok;
+  } catch (err: any) {
+    console.error(err);
+    return false;
+  }
+};
+
+/**
+ * Clear all student results
+ */
+export const clearStudentResults = async (username?: string): Promise<boolean> => {
+  try {
+    const endpoint = username 
+      ? `${API_BASE}/admin/students/${username}/results/clear`
+      : `${API_BASE}/admin/results/clear`;
+    
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -157,12 +179,30 @@ export const resetDatabase = async (): Promise<boolean> => {
 };
 
 /**
- * Clear all student results
+ * Add a new subject
  */
-export const clearStudentResults = async (): Promise<boolean> => {
+export const addSubject = async (name: string, category: string): Promise<boolean> => {
   try {
-    const res = await fetch(`${API_BASE}/admin/results/clear`, {
+    const res = await fetch(`${API_BASE}/admin/subjects`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, category }),
+    });
+    return res.ok;
+  } catch (err: any) {
+    console.error(err);
+    return false;
+  }
+};
+
+/**
+ * Delete a subject
+ */
+export const deleteSubject = async (id: string): Promise<boolean> => {
+  try {
+    const res = await fetch(`${API_BASE}/admin/subjects/${id}`, {
+      method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     });
