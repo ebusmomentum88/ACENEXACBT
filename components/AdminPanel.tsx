@@ -4,7 +4,7 @@ import { Subject, Question, ExamType, SubjectInfo } from '../types';
 import { addQuestionToBank, getBankStats, resetDatabase, clearStudentResults, addBulkQuestions, fetchAllQuestions, deleteQuestion, getAllSubjects, addSubject, deleteSubject } from '../services/db';
 import { registerStudent, getAllStudents, deleteStudent, User, changePassword, generateManualToken, generateLocalTokenImmediate, getAllTokens, TokenInfo, updateAdminCredentials, toggleTokenStatus, resetTokenDevice, deleteToken } from '../services/auth';
 import { LogOut, Upload, Save, Database, FileText, CheckCircle, AlertTriangle, RefreshCw, Trash2, ShieldAlert, Users, Plus, Settings, List, Moon, Sun, Search, GraduationCap, Banknote, Copy, Check, Ban, Phone, User as UserIcon, Smartphone, WifiOff, X, BookOpen } from 'lucide-react';
-import { Button } from './Button';
+import Button from './Button';
 
 interface Props {
   onBack: () => void;
