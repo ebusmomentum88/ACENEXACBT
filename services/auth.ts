@@ -117,10 +117,19 @@ export const logout = async (): Promise<void> => {
     if (!res.ok) {
       throw new Error('Logout failed');
     }
+    // Clear local session
+    localStorage.removeItem('current_user');
   } catch (err: any) {
     console.error(err);
     throw err;
   }
+};
+
+/**
+ * Logout user (alias for backward compatibility)
+ */
+export const logoutUser = async (): Promise<void> => {
+  return logout();
 };
 
 /**
