@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Button } from './Button';
+import Button from './Button';
 import { User, loginUser, loginWithToken, verifyPaystackPayment } from '../services/auth';
 import { AlertCircle, Lock, ArrowLeft, GraduationCap, CheckCircle, Moon, Sun, Smartphone, CreditCard, ChevronRight, Banknote, Shield, MessageCircle, Copy, Building2, WifiOff } from 'lucide-react';
 import { ExamType } from '../types';
