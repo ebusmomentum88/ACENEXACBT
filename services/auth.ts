@@ -23,15 +23,22 @@ export interface TokenInfo {
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://acenexacbt-5b6j.onrender.com/api';
 
 /**
- * Login a user
+ * Login a user (alias for backward compatibility)
  */
 export const login = async (username: string, password: string): Promise<User> => {
+  return loginUser(username, password, 'student');
+};
+
+/**
+ * Login a user with username and password
+ */
+export const loginUser = async (username: string, password: string, role: 'student' | 'admin'): Promise<User> => {
   try {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-      credentials: 'include', // for session/cookie auth
+      body: JSON.stringify({ username, password, role }),
+      credentials: 'include',
     });
     if (!res.ok) {
       const err = await res.json();
@@ -42,6 +49,59 @@ export const login = async (username: string, password: string): Promise<User> =
   } catch (err: any) {
     console.error(err);
     throw new Error(err.message || 'Login error');
+  }
+};
+
+/**
+ * Login with access token
+ */
+export const loginWithToken = async (token: string, forceBinding: boolean = false): Promise<User> => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/token-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, forceBinding }),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Token login failed');
+    }
+    const data = await res.json();
+    return data.user as User;
+  } catch (err: any) {
+    console.error(err);
+    throw err;
+  }
+};
+
+/**
+ * Verify Paystack payment and generate token
+ */
+export const verifyPaystackPayment = async (
+  reference: string,
+  email: string,
+  fullName: string,
+  phoneNumber: string,
+  examType: 'JAMB' | 'WAEC' | 'BOTH',
+  amount: number
+): Promise<{ token: string }> => {
+  try {
+    const res = await fetch(`${API_BASE}/payments/verify-paystack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference, email, fullName, phoneNumber, examType, amount }),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Payment verification failed');
+    }
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    console.error(err);
+    throw err;
   }
 };
 
