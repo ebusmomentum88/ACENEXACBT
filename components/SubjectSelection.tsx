@@ -3,7 +3,7 @@ import { Subject, ExamResult, ExamType, SubjectInfo } from '../types';
 import { 
   CheckCircle, PlayCircle, LogOut, History, Calendar, Key, X, Eye, Moon, Sun, Layers, MousePointer2, MessageSquare 
 } from 'lucide-react';
-import { Button } from './Button';
+import Button from './Button';
 import { User, changePassword } from '../services/auth';
 import { getStudentResults, getAllSubjects } from '../services/db';
 import { ContactModal } from './ContactModal';
@@ -161,8 +161,7 @@ export const SubjectSelection: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* ...rest of the component remains unchanged, including TABS, subject selection, history, and change password modal... */}
-
+        {/* Change Password Modal */}
         {showPwdModal && (
           <div className="fixed inset-0 bg-green-900/80 dark:bg-black/80 z-50 flex items-center justify-center backdrop-blur-sm p-4">
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-sm shadow-2xl border-t-4 border-yellow-500">
