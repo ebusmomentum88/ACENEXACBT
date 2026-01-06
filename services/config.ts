@@ -1,22 +1,18 @@
-// configuration for API connection
-const LOCAL_BACKEND = "http://localhost:5000"; // only for local dev if needed
-const PROD_BACKEND = "https://acenexacbt.onrender.com";
+// config.ts
 
-// Detect environment
-const IS_LOCAL =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1";
+// --- BACKEND URLs ---
+export const API_DEV = 'http://localhost:5000'; // Local development backend
+export const API_PROD = 'https://acenexacbt.onrender.com'; // <-- Replace with your real backend URL
 
-// Default backend
-export const BACKEND_URL = IS_LOCAL ? LOCAL_BACKEND : PROD_BACKEND;
+// --- PAYSTACK PUBLIC KEY ---
+export const PAYSTACK_PUBLIC_KEY = 'pk_live_6285198feb88d1bf9515732e6eea990012a8344e'; // <-- Replace with your actual Paystack public key
 
-// Force offline (keep false for real deployment)
-export const FORCE_OFFLINE = false;
+// --- OFFLINE MODE ---
+export const FORCE_OFFLINE = false; // Set true to force offline mode for testing
 
-// PAYSTACK PUBLIC KEY (LIVE key, replace with your live key)
-export const PAYSTACK_PUBLIC_KEY = "pk_live_6285198feb88d1bf9515732e6eea990012a8344e"; 
-
+// --- API HELPER ---
 export const getApiUrl = (endpoint: string) => {
-    const base = BACKEND_URL.replace(/\/$/, '');
-    return `${base}${endpoint}`;
-}
+  const isProd = import.meta.env.MODE === 'production';
+  const baseUrl = isProd ? API_PROD : API_DEV;
+  return `${baseUrl}${endpoint}`;
+};
