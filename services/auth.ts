@@ -10,7 +10,7 @@ export interface User {
 }
 
 // Base URL of your API
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://acenexacbt-5b6j.onrender.com';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://acenexacbt-5b6j.onrender.com/api';
 
 // ---- CHANGE PASSWORD ----
 export const changePassword = async (
