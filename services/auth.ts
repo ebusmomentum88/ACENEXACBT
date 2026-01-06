@@ -1,7 +1,4 @@
 // services/auth.ts
-import axios from 'axios';
-
-// User interface used across the app
 export interface User {
   username: string;
   fullName: string;
@@ -9,10 +6,77 @@ export interface User {
   allowedExamType: 'JAMB' | 'WAEC' | 'BOTH';
 }
 
-// Base URL of your API
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://acenexacbt-5b6j.onrender.com/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://acenexacbt-5b6j.onrender.com/api';
 
-// ---- CHANGE PASSWORD ----
+/**
+ * Login a user
+ */
+export const login = async (username: string, password: string): Promise<User> => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include', // for session/cookie auth
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Login failed');
+    }
+
+    const data = await res.json();
+    return data.user as User;
+  } catch (err: any) {
+    console.error(err);
+    throw new Error(err.message || 'Login error');
+  }
+};
+
+/**
+ * Logout the current user
+ */
+export const logout = async (): Promise<void> => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      throw new Error('Logout failed');
+    }
+  } catch (err: any) {
+    console.error(err);
+    throw err;
+  }
+};
+
+/**
+ * Get currently authenticated user
+ */
+export const getCurrentUser = async (): Promise<User | null> => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      return null; // Not logged in
+    }
+
+    const data = await res.json();
+    return data.user as User;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+/**
+ * Change user password
+ */
 export const changePassword = async (
   username: string,
   oldPassword: string,
@@ -20,67 +84,19 @@ export const changePassword = async (
   role: 'student' | 'admin'
 ): Promise<void> => {
   try {
-    const response = await axios.post(`${API_BASE}/auth/change-password`, {
-      username,
-      oldPassword,
-      newPassword,
-      role,
+    const res = await fetch(`${API_BASE}/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, oldPassword, newPassword, role }),
+      credentials: 'include',
     });
 
-    if (response.status !== 200) {
-      throw new Error(response.data?.message || 'Failed to change password');
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Password change failed');
     }
-  } catch (error: any) {
-    // Axios error handling
-    if (error.response?.data?.message) {
-      throw new Error(error.response.data.message);
-    }
-    throw new Error(error.message || 'Failed to change password');
-  }
-};
-
-// ---- LOGIN FUNCTION ----
-export const login = async (
-  username: string,
-  password: string,
-  role: 'student' | 'admin'
-): Promise<User> => {
-  try {
-    const response = await axios.post(`${API_BASE}/auth/login`, {
-      username,
-      password,
-      role,
-    });
-
-    if (response.status !== 200 || !response.data.user) {
-      throw new Error(response.data?.message || 'Login failed');
-    }
-
-    return response.data.user as User;
-  } catch (error: any) {
-    if (error.response?.data?.message) {
-      throw new Error(error.response.data.message);
-    }
-    throw new Error(error.message || 'Login failed');
-  }
-};
-
-// ---- GET CURRENT USER (optional helper) ----
-export const getCurrentUser = async (token: string): Promise<User> => {
-  try {
-    const response = await axios.get(`${API_BASE}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (response.status !== 200 || !response.data.user) {
-      throw new Error('Failed to fetch user');
-    }
-
-    return response.data.user as User;
-  } catch (error: any) {
-    if (error.response?.data?.message) {
-      throw new Error(error.response.data.message);
-    }
-    throw new Error(error.message || 'Failed to fetch user');
+  } catch (err: any) {
+    console.error(err);
+    throw err;
   }
 };
