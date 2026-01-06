@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ExamSession, Question, Subject } from '../types';
 import { Timer, ChevronLeft, ChevronRight, CheckSquare, Flag, Calculator as CalcIcon, X, Delete, GraduationCap, Grid, Maximize, Minimize, AlertCircle, Keyboard, MousePointer2, Moon, Sun, BarChart, Move } from 'lucide-react';
-import { Button } from './Button';
+import Button from './Button';
 import { User } from '../services/auth';
 import { JambLogo, WaecLogo, AcenexaLogo } from './ExamLogos';
 
