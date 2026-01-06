@@ -2,7 +2,7 @@
 import React from 'react';
 import { CandyToken } from './CandyToken';
 import { playSound } from '../services/audio';
-import { Button } from './Button';
+import Button from './Button';
 import { Lock, Check } from 'lucide-react';
 
 interface Props {
