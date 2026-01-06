@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ExamResult } from '../types';
 import { CheckCircle, XCircle, RotateCcw, Home, AlertCircle, Moon, Sun } from 'lucide-react';
-import { Button } from './Button';
+import Button from './Button';
 
 interface Props {
   result: ExamResult;
