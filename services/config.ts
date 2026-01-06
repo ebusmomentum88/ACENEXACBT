@@ -1,17 +1,18 @@
 
 // configuration for API connection
 
-// Your Render Backend URL
-export const BACKEND_URL = "https://ebus-edu-consult-main.onrender.com"; 
+// Your Backend URL - FOR LOCAL DEVELOPMENT USE LOCALHOST
+export const BACKEND_URL = "http://localhost:5000";
 
 // SET THIS TO TRUE TO DISABLE BACKEND AND USE LOCAL STORAGE ONLY
 // Change to 'false' when you want to connect to the real server.
-export const FORCE_OFFLINE = false; 
+export const FORCE_OFFLINE = false;
 
 // --- PAYSTACK PUBLIC KEY ---
-// Paste your "Public Key" from Paystack Dashboard here.
-// It usually starts with "pk_live_" or "pk_test_"
-export const PAYSTACK_PUBLIC_KEY = "pk_live_6285198feb88d1bf9515732e6eea990012a8344e"; 
+// Use TEST keys for development, LIVE keys for production
+// Test keys start with "pk_test_" and are for sandbox/testing
+// Live keys start with "pk_live_" and are for real payments
+export const PAYSTACK_PUBLIC_KEY = "pk_test_1234567890abcdefghijklmnopqrstuvwxyz"; // CHANGE THIS TO YOUR TEST KEY 
 
 export const getApiUrl = (endpoint: string) => {
     // Ensure no double slashes if BACKEND_URL ends with /
