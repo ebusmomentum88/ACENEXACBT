@@ -9,7 +9,7 @@ interface Props {
   initialEmail?: string;
 }
 
-const ContactModal: React.FC<Props> = ({
+export const ContactModal: React.FC<Props> = ({
   isOpen,
   onClose,
   initialName = '',
@@ -113,5 +113,3 @@ const ContactModal: React.FC<Props> = ({
     </div>
   );
 };
-
-export default ContactModal;
